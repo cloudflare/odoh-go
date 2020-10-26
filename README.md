@@ -4,7 +4,7 @@
 [![Coverage Status](https://coveralls.io/repos/github/chris-wood/odoh/badge.svg?branch=master)](https://coveralls.io/github/chris-wood/odoh?branch=master)
 [![GoDoc](https://godoc.org/github.com/chris-wood/odoh?status.svg)](https://godoc.org/github.com/chris-wood/odoh)
 
-This library implements draft -02 of [Oblivious DoH](https://tools.ietf.org/html/draft-pauly-dprive-oblivious-doh-02). 
+This library implements draft -02 of [Oblivious DoH](https://tools.ietf.org/html/draft-pauly-dprive-oblivious-doh-02). It is based on the original implementation [available here](https://github.com/chris-wood/odoh).
 
 ## Test vector generation
 
