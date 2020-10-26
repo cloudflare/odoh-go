@@ -1,4 +1,4 @@
-# [Oblivious DoH](https://tools.ietf.org/html/draft-pauly-dprive-oblivious-doh)
+# odoh-go
 
 [![Coverage Status](https://coveralls.io/repos/github/cloudflare/odoh-go/badge.svg?branch=master)](https://coveralls.io/github/cloudflare/odoh-go?branch=master)
 [![GoDoc](https://godoc.org/github.com/cloudflare/odoh-go?status.svg)](https://godoc.org/github.com/cloudflare/odoh-go)
