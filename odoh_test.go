@@ -29,11 +29,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/cisco/go-hpke"
 	"io"
 	"io/ioutil"
 	"os"
 	"testing"
+
+	"github.com/cisco/go-hpke"
 )
 
 const (
@@ -683,7 +684,7 @@ type rawTestVector struct {
 	KemID         int    `json:"kem_id"`
 	KdfID         int    `json:"kdf_id"`
 	AeadID        int    `json:"aead_id"`
-	Config        string `json:"odohconfig"`
+	Configs       string `json:"odohconfigs"`
 	PublicKeySeed string `json:"public_key_seed"`
 	KeyId         string `json:"key_id"`
 
@@ -695,7 +696,7 @@ type testVector struct {
 	kem_id          hpke.KEMID
 	kdf_id          hpke.KDFID
 	aead_id         hpke.AEADID
-	odoh_config     []byte
+	odoh_configs    []byte
 	public_key_seed []byte
 	key_id          []byte
 
@@ -707,7 +708,7 @@ func (tv testVector) MarshalJSON() ([]byte, error) {
 		KemID:         int(tv.kem_id),
 		KdfID:         int(tv.kdf_id),
 		AeadID:        int(tv.aead_id),
-		Config:        mustHex(tv.odoh_config),
+		Configs:       mustHex(tv.odoh_configs),
 		PublicKeySeed: mustHex(tv.public_key_seed),
 		KeyId:         mustHex(tv.key_id),
 		Transactions:  tv.transactions,
@@ -725,7 +726,7 @@ func (tv *testVector) UnmarshalJSON(data []byte) error {
 	tv.kdf_id = hpke.KDFID(raw.KdfID)
 	tv.aead_id = hpke.AEADID(raw.AeadID)
 	tv.public_key_seed = mustUnhex(tv.t, raw.PublicKeySeed)
-	tv.odoh_config = mustUnhex(tv.t, raw.Config)
+	tv.odoh_configs = mustUnhex(tv.t, raw.Configs)
 	tv.key_id = mustUnhex(tv.t, raw.KeyId)
 
 	tv.transactions = raw.Transactions
@@ -828,12 +829,13 @@ func generateTestVector(t *testing.T, kem_id hpke.KEMID, kdf_id hpke.KDFID, aead
 		}
 	}
 
+	configs := []ObliviousDoHConfig{kp.Config}
 	vector := testVector{
 		t:               t,
 		kem_id:          kem_id,
 		kdf_id:          kdf_id,
 		aead_id:         aead_id,
-		odoh_config:     kp.Config.Marshal(),
+		odoh_configs:    CreateObliviousDoHConfigs(configs).Marshal(),
 		public_key_seed: kp.Seed,
 		key_id:          kp.Config.Contents.KeyID(),
 		transactions:    transactions,
@@ -843,8 +845,9 @@ func generateTestVector(t *testing.T, kem_id hpke.KEMID, kdf_id hpke.KDFID, aead
 }
 
 func verifyTestVector(t *testing.T, tv testVector) {
-	config, err := UnmarshalObliviousDoHConfig(tv.odoh_config)
-	assertNotError(t, "UnmarshalObliviousDoHConfigContents failed", err)
+	configs, err := UnmarshalObliviousDoHConfigs(tv.odoh_configs)
+	assertNotError(t, "UnmarshalObliviousDoHConfigs failed", err)
+	config := configs.Configs[0]
 
 	kp, err := CreateKeyPairFromSeed(config.Contents.KemID, config.Contents.KdfID, config.Contents.AeadID, tv.public_key_seed)
 	assertNotError(t, "CreateKeyPairFromSeed failed", err)
@@ -892,7 +895,7 @@ func verifyTestVectors(t *testing.T, vectorString []byte, subtest bool) {
 		if !subtest {
 			test(t)
 		} else {
-			label := fmt.Sprintf("config=%x", tv.odoh_config)
+			label := fmt.Sprintf("odohconfigs=%x", tv.odoh_configs)
 			t.Run(label, test)
 		}
 	}
