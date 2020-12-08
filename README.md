@@ -5,6 +5,8 @@
 
 This library implements draft -03 of [Oblivious DoH](https://tools.ietf.org/html/draft-pauly-dprive-oblivious-doh-03). It is based on the original implementation [available here](https://github.com/chris-wood/odoh).
 
+![protocol overview](odoh-flow.png)
+
 ## Test vector generation
 
 To generate test vectors, run:
