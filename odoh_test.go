@@ -20,6 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+// Package odoh implements Oblivious DNS queries.
 package odoh
 
 import (
@@ -34,7 +35,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/cisco/go-hpke"
+	"github.com/cloudflare/circl/hpke"
+	"github.com/cloudflare/circl/kem"
 )
 
 const (
@@ -202,19 +204,23 @@ func TestConfigsDeserialization(t *testing.T) {
 }
 
 func createDefaultSerializedPublicKey(t *testing.T) []byte {
-	suite, err := hpke.AssembleCipherSuite(ODOH_DEFAULT_KEMID, ODOH_DEFAULT_KDFID, ODOH_DEFAULT_AEADID)
+	_, kemScheme, err := getSuite(ODOH_DEFAULT_KEMID, ODOH_DEFAULT_KDFID, ODOH_DEFAULT_AEADID)
 	if err != nil {
-		t.Fatalf("Failed generating HPKE suite")
+		t.Fatal(err)
 	}
 
-	ikm := make([]byte, suite.KEM.PrivateKeySize())
-	_, _ = rand.Read(ikm)
-	_, publicKey, err := suite.KEM.DeriveKeyPair(ikm)
+	ikm := make([]byte, kemScheme.SeedSize())
+	_, err = rand.Read(ikm)
+	if err != nil {
+		t.Fatalf("Failed generating random bytes")
+	}
+	publicKey, _ := kemScheme.DeriveKeyPair(ikm)
+
+	bytes, err := publicKey.MarshalBinary()
 	if err != nil {
 		t.Fatalf("Failed generating public key")
 	}
-
-	return suite.KEM.Serialize(publicKey)
+	return bytes
 }
 
 func validateSerializedContents(t *testing.T, configContents ObliviousDoHConfigContents, serializedContents []byte) {
@@ -348,27 +354,27 @@ func TestDNSMessageMarshal(t *testing.T) {
 }
 
 func TestQueryEncryption(t *testing.T) {
-	kemID := hpke.DHKEM_X25519
+	kemID := hpke.KEM_X25519_HKDF_SHA256
 	kdfID := hpke.KDF_HKDF_SHA256
-	aeadID := hpke.AEAD_AESGCM128
+	aeadID := hpke.AEAD_AES128GCM
 
-	suite, err := hpke.AssembleCipherSuite(kemID, kdfID, aeadID)
+	scheme := hpke.KEM(kemID).Scheme()
+	ikm := make([]byte, scheme.SeedSize())
+	_, err := rand.Read(ikm)
 	if err != nil {
-		t.Fatalf("[%x, %x, %x] Error looking up ciphersuite: %s", kemID, kdfID, aeadID, err)
+		t.Fatalf("Failed generating random bytes")
 	}
-
-	ikm := make([]byte, suite.KEM.PrivateKeySize())
-	rand.Reader.Read(ikm)
-	skR, pkR, err := suite.KEM.DeriveKeyPair(ikm)
+	pkR, skR := scheme.DeriveKeyPair(ikm)
+	publicKeyBytes, err := pkR.MarshalBinary()
 	if err != nil {
-		t.Fatalf("[%x, %x, %x] Error generating DH key pair: %s", kemID, kdfID, aeadID, err)
+		t.Fatalf("public key serialization failed: %s", err)
 	}
 
 	targetKey := ObliviousDoHConfigContents{
-		KemID:          kemID,
-		KdfID:          kdfID,
-		AeadID:         aeadID,
-		PublicKeyBytes: suite.KEM.Serialize(pkR),
+		KemID:          uint16(kemID),
+		KdfID:          uint16(kdfID),
+		AeadID:         uint16(aeadID),
+		PublicKeyBytes: publicKeyBytes,
 	}
 
 	targetConfig := ObliviousDoHConfig{
@@ -397,33 +403,34 @@ func TestQueryEncryption(t *testing.T) {
 }
 
 func Test_Sender_ODOHQueryEncryption(t *testing.T) {
-	kemID := hpke.DHKEM_P256      // 0x0010
-	kdfID := hpke.KDF_HKDF_SHA256 // 0x0001
-	aeadID := hpke.AEAD_AESGCM128 // 0x0001
+	kemID := hpke.KEM_P256_HKDF_SHA256 // 0x0010
+	kdfID := hpke.KDF_HKDF_SHA256      // 0x0001
+	aeadID := hpke.AEAD_AES128GCM      // 0x0001
 
-	suite, err := hpke.AssembleCipherSuite(kemID, kdfID, aeadID)
-	if err != nil {
-		t.Fatalf("[%x, %x, %x] Error looking up ciphersuite: %s", kemID, kdfID, aeadID, err)
-	}
-
-	responseKey := make([]byte, suite.AEAD.KeySize())
+	keySize := hpke.AEAD(aeadID).KeySize()
+	responseKey := make([]byte, keySize)
 	if _, err := io.ReadFull(rand.Reader, responseKey); err != nil {
 		t.Fatalf("Failed generating random key: %s", err)
 	}
 
-	ikm := make([]byte, suite.KEM.PrivateKeySize())
-	rand.Reader.Read(ikm)
-
-	skR, pkR, err := suite.KEM.DeriveKeyPair(ikm)
+	scheme := hpke.KEM(kemID).Scheme()
+	ikm := make([]byte, scheme.SeedSize())
+	_, err := rand.Reader.Read(ikm)
 	if err != nil {
-		t.Fatalf("[%x, %x, %x] Error generating DH key pair: %s", kemID, kdfID, aeadID, err)
+		t.Fatalf("Failed generating random bytes")
+	}
+
+	pkR, skR := scheme.DeriveKeyPair(ikm)
+	publicKeyBytes, err := pkR.MarshalBinary()
+	if err != nil {
+		t.Fatalf("public key serialization failed: %s", err)
 	}
 
 	targetKey := ObliviousDoHConfigContents{
-		KemID:          kemID,
-		KdfID:          kdfID,
-		AeadID:         aeadID,
-		PublicKeyBytes: suite.KEM.Serialize(pkR),
+		KemID:          uint16(kemID),
+		KdfID:          uint16(kdfID),
+		AeadID:         uint16(aeadID),
+		PublicKeyBytes: publicKeyBytes,
 	}
 
 	targetConfig := ObliviousDoHConfig{
@@ -431,8 +438,11 @@ func Test_Sender_ODOHQueryEncryption(t *testing.T) {
 	}
 
 	odohKeyPair := ObliviousDoHKeyPair{targetConfig, skR, ikm}
-	symmetricKey := make([]byte, suite.AEAD.KeySize())
-	rand.Read(symmetricKey)
+	symmetricKey := make([]byte, keySize)
+	_, err = rand.Read(symmetricKey)
+	if err != nil {
+		t.Fatalf("Failed generating random bytes")
+	}
 
 	dnsMessage := []byte{0x01, 0x02, 0x03}
 	message := CreateObliviousDNSQuery(dnsMessage, 0)
@@ -460,33 +470,33 @@ func TestEncoding(t *testing.T) {
 }
 
 func TestOdohPublicKeyMarshalUnmarshal(t *testing.T) {
-	kemID := hpke.DHKEM_P256      // 0x0010
-	kdfID := hpke.KDF_HKDF_SHA256 // 0x0001
-	aeadID := hpke.AEAD_AESGCM128 // 0x0001
+	kemID := hpke.KEM_P256_HKDF_SHA256 // 0x0010
+	kdfID := hpke.KDF_HKDF_SHA256      // 0x0001
+	aeadID := hpke.AEAD_AES128GCM      // 0x0001
 
-	suite, err := hpke.AssembleCipherSuite(kemID, kdfID, aeadID)
-	if err != nil {
-		t.Fatalf("[%x, %x, %x] Error looking up ciphersuite: %s", kemID, kdfID, aeadID, err)
-	}
-
-	responseKey := make([]byte, suite.AEAD.KeySize())
+	scheme := kemID.Scheme()
+	responseKey := make([]byte, aeadID.KeySize())
 	if _, err := io.ReadFull(rand.Reader, responseKey); err != nil {
 		t.Fatalf("Failed generating random key: %s", err)
 	}
 
-	ikm := make([]byte, suite.KEM.PrivateKeySize())
-	rand.Reader.Read(ikm)
-
-	_, pkR, err := suite.KEM.DeriveKeyPair(ikm)
+	ikm := make([]byte, scheme.SeedSize())
+	_, err := rand.Reader.Read(ikm)
 	if err != nil {
-		t.Fatalf("[%x, %x, %x] Error generating DH key pair: %s", kemID, kdfID, aeadID, err)
+		t.Fatalf("Failed generating random bytes")
+	}
+
+	pkR, _ := scheme.DeriveKeyPair(ikm)
+	publicKeyBytes, err := pkR.MarshalBinary()
+	if err != nil {
+		t.Fatalf("public key serialization failed: %s", err)
 	}
 
 	targetKey := ObliviousDoHConfigContents{
-		KemID:          kemID,
-		KdfID:          kdfID,
-		AeadID:         aeadID,
-		PublicKeyBytes: suite.KEM.Serialize(pkR),
+		KemID:          uint16(kemID),
+		KdfID:          uint16(kdfID),
+		AeadID:         uint16(aeadID),
+		PublicKeyBytes: publicKeyBytes,
 	}
 
 	serializedPublicKey := targetKey.Marshal()
@@ -514,13 +524,13 @@ func TestOdohPublicKeyMarshalUnmarshal(t *testing.T) {
 
 func TestFixedOdohKeyPairCreation(t *testing.T) {
 	const (
-		kemID  = hpke.DHKEM_X25519
-		kdfID  = hpke.KDF_HKDF_SHA256
-		aeadID = hpke.AEAD_AESGCM128
+		kemID  = uint16(hpke.KEM_X25519_HKDF_SHA256)
+		kdfID  = uint16(hpke.KDF_HKDF_SHA256)
+		aeadID = uint16(hpke.AEAD_AES128GCM)
 	)
 
-	// Fixed 16 byte seed
-	seedHex := "f7c664a7959b2aa02ffa7abb0d2022ab"
+	// Fixed 32 byte seed
+	seedHex := "f7c664a7959b2aa02ffa7abb0d2022abf7c664a7959b2aa02ffa7abb0d2022ab"
 	seed, err := hex.DecodeString(seedHex)
 	if err != nil {
 		t.Fatalf("Unable to decode seed to bytes")
@@ -541,9 +551,9 @@ func TestFixedOdohKeyPairCreation(t *testing.T) {
 }
 
 func TestSealQueryAndOpenAnswer(t *testing.T) {
-	kemID := hpke.DHKEM_X25519
-	kdfID := hpke.KDF_HKDF_SHA256
-	aeadID := hpke.AEAD_AESGCM128
+	kemID := uint16(hpke.KEM_X25519_HKDF_SHA256)
+	kdfID := uint16(hpke.KDF_HKDF_SHA256)
+	aeadID := uint16(hpke.AEAD_AES128GCM)
 
 	kp, err := CreateKeyPair(kemID, kdfID, aeadID)
 	if err != nil {
@@ -574,16 +584,19 @@ func TestSealQueryAndOpenAnswer(t *testing.T) {
 // Assertions
 func assert(t *testing.T, msg string, test bool) {
 	if !test {
+		t.Helper()
 		t.Fatalf("%s", msg)
 	}
 }
 
 func assertBytesEqual(t *testing.T, msg string, lhs, rhs []byte) {
+	t.Helper()
 	realMsg := fmt.Sprintf("%s: [%x] != [%x]", msg, lhs, rhs)
 	assert(t, realMsg, bytes.Equal(lhs, rhs))
 }
 
 func assertNotError(t *testing.T, msg string, err error) {
+	t.Helper()
 	realMsg := fmt.Sprintf("%s: %v", msg, err)
 	assert(t, realMsg, err == nil)
 }
@@ -592,6 +605,7 @@ func fatalOnError(t *testing.T, err error, msg string) {
 	realMsg := fmt.Sprintf("%s: %v", msg, err)
 	if err != nil {
 		if t != nil {
+			t.Helper()
 			t.Fatalf(realMsg)
 		} else {
 			panic(realMsg)
@@ -609,17 +623,22 @@ func mustHex(d []byte) string {
 	return hex.EncodeToString(d)
 }
 
-func mustDeserializePub(t *testing.T, suite hpke.CipherSuite, h string, required bool) hpke.KEMPublicKey {
+func mustDeserializePub(t *testing.T, suite hpke.Suite, h string, required bool) kem.PublicKey {
 	pkm := mustUnhex(t, h)
-	pk, err := suite.KEM.Deserialize(pkm)
+	kemID, _, _ := suite.Params()
+	pk, err := kemID.Scheme().UnmarshalBinaryPublicKey(pkm)
 	if required {
 		fatalOnError(t, err, "Deserialize failed")
 	}
 	return pk
 }
 
-func mustSerializePub(suite hpke.CipherSuite, pub hpke.KEMPublicKey) string {
-	return mustHex(suite.KEM.Serialize(pub))
+func mustSerializePub(suite hpke.Suite, pub kem.PublicKey) string {
+	bytes, err := pub.MarshalBinary()
+	if err != nil {
+		panic(err)
+	}
+	return mustHex(bytes)
 }
 
 ///////
@@ -693,9 +712,9 @@ type rawTestVector struct {
 
 type testVector struct {
 	t               *testing.T
-	kem_id          hpke.KEMID
-	kdf_id          hpke.KDFID
-	aead_id         hpke.AEADID
+	kem_id          uint16
+	kdf_id          uint16
+	aead_id         uint16
 	odoh_configs    []byte
 	public_key_seed []byte
 	key_id          []byte
@@ -722,9 +741,9 @@ func (tv *testVector) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	tv.kem_id = hpke.KEMID(raw.KemID)
-	tv.kdf_id = hpke.KDFID(raw.KdfID)
-	tv.aead_id = hpke.AEADID(raw.AeadID)
+	tv.kem_id = uint16(raw.KemID)
+	tv.kdf_id = uint16(raw.KdfID)
+	tv.aead_id = uint16(raw.AeadID)
 	tv.public_key_seed = mustUnhex(tv.t, raw.PublicKeySeed)
 	tv.odoh_configs = mustUnhex(tv.t, raw.Configs)
 	tv.key_id = mustUnhex(tv.t, raw.KeyId)
@@ -803,7 +822,7 @@ func generateTransaction(t *testing.T, kp ObliviousDoHKeyPair, querySize int, qu
 	}
 }
 
-func generateTestVector(t *testing.T, kem_id hpke.KEMID, kdf_id hpke.KDFID, aead_id hpke.AEADID) testVector {
+func generateTestVector(t *testing.T, kem_id uint16, kdf_id uint16, aead_id uint16) testVector {
 	kp, err := CreateKeyPair(kem_id, kdf_id, aead_id)
 	if err != nil {
 		t.Fatalf("Unable to create a Key Pair")
@@ -903,9 +922,9 @@ func verifyTestVectors(t *testing.T, vectorString []byte, subtest bool) {
 
 func TestVectorGenerate(t *testing.T) {
 	// This is the mandatory HPKE ciphersuite
-	supportedKEMs := []hpke.KEMID{hpke.DHKEM_X25519}
-	supportedKDFs := []hpke.KDFID{hpke.KDF_HKDF_SHA256}
-	supportedAEADs := []hpke.AEADID{hpke.AEAD_AESGCM128}
+	supportedKEMs := []uint16{uint16(hpke.KEM_X25519_HKDF_SHA256)}
+	supportedKDFs := []uint16{uint16(hpke.KDF_HKDF_SHA256)}
+	supportedAEADs := []uint16{uint16(hpke.AEAD_AES128GCM)}
 
 	vectors := make([]testVector, 0)
 	for _, kem_id := range supportedKEMs {
