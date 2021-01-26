@@ -28,11 +28,12 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+
 	"github.com/cisco/go-hpke"
 )
 
 const (
-	ODOH_VERSION                    = uint16(0xff03)
+	ODOH_VERSION                    = uint16(0xff04)
 	ODOH_SECRET_LENGTH              = 32
 	ODOH_PADDING_BYTE               = uint8(0)
 	ODOH_LABEL_KEY_ID               = "odoh key id"
@@ -58,7 +59,7 @@ func CreateObliviousDoHConfigContents(kemID hpke.KEMID, kdfID hpke.KDFID, aeadID
 		return ObliviousDoHConfigContents{}, err
 	}
 
-	_, err = suite.KEM.Deserialize(publicKeyBytes)
+	_, err = suite.KEM.DeserializePublicKey(publicKeyBytes)
 	if err != nil {
 		return ObliviousDoHConfigContents{}, err
 	}
@@ -177,7 +178,7 @@ func UnmarshalObliviousDoHConfigContents(buffer []byte) (ObliviousDoHConfigConte
 		return ObliviousDoHConfigContents{}, errors.New(fmt.Sprintf("Unsupported HPKE ciphersuite"))
 	}
 
-	_, err = suite.KEM.Deserialize(publicKeyBytes)
+	_, err = suite.KEM.DeserializePublicKey(publicKeyBytes)
 	if err != nil {
 		return ObliviousDoHConfigContents{}, errors.New(fmt.Sprintf("Invalid HPKE public key bytes"))
 	}
@@ -338,7 +339,7 @@ func CreateKeyPairFromSeed(kemID hpke.KEMID, kdfID hpke.KDFID, aeadID hpke.AEADI
 		return ObliviousDoHKeyPair{}, err
 	}
 
-	configContents, err := CreateObliviousDoHConfigContents(kemID, kdfID, aeadID, suite.KEM.Serialize(pk))
+	configContents, err := CreateObliviousDoHConfigContents(kemID, kdfID, aeadID, suite.KEM.SerializePublicKey(pk))
 	if err != nil {
 		return ObliviousDoHKeyPair{}, err
 	}
@@ -369,7 +370,7 @@ func CreateKeyPair(kemID hpke.KEMID, kdfID hpke.KDFID, aeadID hpke.AEADID) (Obli
 		return ObliviousDoHKeyPair{}, err
 	}
 
-	configContents, err := CreateObliviousDoHConfigContents(kemID, kdfID, aeadID, suite.KEM.Serialize(pk))
+	configContents, err := CreateObliviousDoHConfigContents(kemID, kdfID, aeadID, suite.KEM.SerializePublicKey(pk))
 	if err != nil {
 		return ObliviousDoHKeyPair{}, err
 	}
@@ -444,7 +445,7 @@ func (targetKey ObliviousDoHConfigContents) EncryptQuery(query *ObliviousDNSQuer
 		return ObliviousDNSMessage{}, QueryContext{}, err
 	}
 
-	pkR, err := suite.KEM.Deserialize(targetKey.PublicKeyBytes)
+	pkR, err := suite.KEM.DeserializePublicKey(targetKey.PublicKeyBytes)
 	if err != nil {
 		return ObliviousDNSMessage{}, QueryContext{}, err
 	}

@@ -214,7 +214,7 @@ func createDefaultSerializedPublicKey(t *testing.T) []byte {
 		t.Fatalf("Failed generating public key")
 	}
 
-	return suite.KEM.Serialize(publicKey)
+	return suite.KEM.SerializePublicKey(publicKey)
 }
 
 func validateSerializedContents(t *testing.T, configContents ObliviousDoHConfigContents, serializedContents []byte) {
@@ -368,7 +368,7 @@ func TestQueryEncryption(t *testing.T) {
 		KemID:          kemID,
 		KdfID:          kdfID,
 		AeadID:         aeadID,
-		PublicKeyBytes: suite.KEM.Serialize(pkR),
+		PublicKeyBytes: suite.KEM.SerializePublicKey(pkR),
 	}
 
 	targetConfig := ObliviousDoHConfig{
@@ -423,7 +423,7 @@ func Test_Sender_ODOHQueryEncryption(t *testing.T) {
 		KemID:          kemID,
 		KdfID:          kdfID,
 		AeadID:         aeadID,
-		PublicKeyBytes: suite.KEM.Serialize(pkR),
+		PublicKeyBytes: suite.KEM.SerializePublicKey(pkR),
 	}
 
 	targetConfig := ObliviousDoHConfig{
@@ -486,7 +486,7 @@ func TestOdohPublicKeyMarshalUnmarshal(t *testing.T) {
 		KemID:          kemID,
 		KdfID:          kdfID,
 		AeadID:         aeadID,
-		PublicKeyBytes: suite.KEM.Serialize(pkR),
+		PublicKeyBytes: suite.KEM.SerializePublicKey(pkR),
 	}
 
 	serializedPublicKey := targetKey.Marshal()
@@ -611,7 +611,7 @@ func mustHex(d []byte) string {
 
 func mustDeserializePub(t *testing.T, suite hpke.CipherSuite, h string, required bool) hpke.KEMPublicKey {
 	pkm := mustUnhex(t, h)
-	pk, err := suite.KEM.Deserialize(pkm)
+	pk, err := suite.KEM.DeserializePublicKey(pkm)
 	if required {
 		fatalOnError(t, err, "Deserialize failed")
 	}
@@ -619,7 +619,7 @@ func mustDeserializePub(t *testing.T, suite hpke.CipherSuite, h string, required
 }
 
 func mustSerializePub(suite hpke.CipherSuite, pub hpke.KEMPublicKey) string {
-	return mustHex(suite.KEM.Serialize(pub))
+	return mustHex(suite.KEM.SerializePublicKey(pub))
 }
 
 ///////
