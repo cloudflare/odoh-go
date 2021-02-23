@@ -861,15 +861,15 @@ func verifyTestVector(t *testing.T, tv testVector) {
 		assertBytesEqual(t, "Query decryption mismatch", query.DnsMessage, transaction.query)
 
 		testResponse := CreateObliviousDNSResponse(transaction.response, transaction.responsePaddingLength)
-		obliviousResponse, err := responseContext.EncryptResponse(testResponse)
+		obliviousResponse, err := responseContext.encryptResponseWithNonce(testResponse, transaction.obliviousResponse.KeyID)
 		assertNotError(t, "Response encryption failed", err)
 		assertBytesEqual(t, "Response encryption mismatch", obliviousResponse.Marshal(), transaction.obliviousResponse.Marshal())
 
 		// Rebuild decryption context, since we don't control the client's ephemeral key
 		queryContext := QueryContext{
-			odohSecret: responseContext.odohSecret,
-			query:      query.Marshal(),
-			suite:      responseContext.suite,
+			secret: responseContext.secret,
+			query:  query.Marshal(),
+			suite:  responseContext.suite,
 		}
 		response, err := queryContext.OpenAnswer(obliviousResponse)
 		assertNotError(t, "Response decryption failed", err)
