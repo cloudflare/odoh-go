@@ -36,11 +36,11 @@ const (
 	ODOH_VERSION                    = uint16(0xff06)
 	ODOH_SECRET_LENGTH              = 32
 	ODOH_PADDING_BYTE               = uint8(0)
-	ODOH_LABEL_KEY_ID               = "id"
-	ODOH_LABEL_KEY                  = "key"
-	ODOH_LABEL_NONCE                = "nonce"
-	ODOH_LABEL_QUERY                = "query"
-	ODOH_LABEL_RESPONSE             = "response"
+	ODOH_LABEL_KEY_ID               = "odoh key id"
+	ODOH_LABEL_KEY                  = "odoh key"
+	ODOH_LABEL_NONCE                = "odoh nonce"
+	ODOH_LABEL_QUERY                = "odoh query"
+	ODOH_LABEL_RESPONSE             = "odoh response"
 	ODOH_DEFAULT_KEMID  hpke.KEMID  = hpke.DHKEM_X25519
 	ODOH_DEFAULT_KDFID  hpke.KDFID  = hpke.KDF_HKDF_SHA256
 	ODOH_DEFAULT_AEADID hpke.AEADID = hpke.AEAD_AESGCM128
