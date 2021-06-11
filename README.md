@@ -3,7 +3,7 @@
 [![Coverage Status](https://coveralls.io/repos/github/cloudflare/odoh-go/badge.svg?branch=master)](https://coveralls.io/github/cloudflare/odoh-go?branch=master)
 [![GoDoc](https://godoc.org/github.com/cloudflare/odoh-go?status.svg)](https://godoc.org/github.com/cloudflare/odoh-go)
 
-This library implements draft -06 of [Oblivious DoH](https://tools.ietf.org/html/draft-pauly-dprive-oblivious-doh-06). It is based on the original implementation [available here](https://github.com/chris-wood/odoh).
+This library implements version 0x0001 of [Oblivious DoH](https://tfpauly.github.io/draft-pauly-adaptive-dns-privacy/draft-pauly-dprive-oblivious-doh.html). It is based on the original implementation [available here](https://github.com/chris-wood/odoh).
 
 ![protocol overview](odoh-flow.png)
 
