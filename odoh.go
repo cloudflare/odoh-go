@@ -33,7 +33,7 @@ import (
 )
 
 const (
-	ODOH_VERSION                    = uint16(0xff06)
+	ODOH_VERSION                    = uint16(0x0001)
 	ODOH_SECRET_LENGTH              = 32
 	ODOH_PADDING_BYTE               = uint8(0)
 	ODOH_LABEL_KEY_ID               = "odoh key id"
