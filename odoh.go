@@ -39,8 +39,8 @@ const (
 	ODOH_LABEL_KEY_ID               = "odoh key id"
 	ODOH_LABEL_KEY                  = "odoh key"
 	ODOH_LABEL_NONCE                = "odoh nonce"
-	ODOH_LABEL_SECRET               = "odoh secret"
 	ODOH_LABEL_QUERY                = "odoh query"
+	ODOH_LABEL_RESPONSE             = "odoh response"
 	ODOH_DEFAULT_KEMID  hpke.KEMID  = hpke.DHKEM_X25519
 	ODOH_DEFAULT_KDFID  hpke.KDFID  = hpke.KDF_HKDF_SHA256
 	ODOH_DEFAULT_AEADID hpke.AEADID = hpke.AEAD_AESGCM128
@@ -389,54 +389,83 @@ func CreateDefaultKeyPair() (ObliviousDoHKeyPair, error) {
 }
 
 type QueryContext struct {
-	odohSecret []byte
-	suite      hpke.CipherSuite
-	query      []byte
-	publicKey  ObliviousDoHConfigContents
+	query     []byte
+	suite     hpke.CipherSuite
+	secret    []byte
+	publicKey ObliviousDoHConfigContents
 }
 
 func (c QueryContext) DecryptResponse(message ObliviousDNSMessage) ([]byte, error) {
-	aad := append([]byte{byte(ResponseType)}, []byte{0x00, 0x00}...) // 0-length encoded KeyID
+	responseNonceSize := c.suite.AEAD.KeySize()
+	if responseNonceSize < c.suite.AEAD.NonceSize() {
+		responseNonceSize = c.suite.AEAD.NonceSize()
+	}
 
-	odohPRK := c.suite.KDF.Extract(c.query, c.odohSecret)
-	key := c.suite.KDF.Expand(odohPRK, []byte(ODOH_LABEL_KEY), c.suite.AEAD.KeySize())
-	nonce := c.suite.KDF.Expand(odohPRK, []byte(ODOH_LABEL_NONCE), c.suite.AEAD.NonceSize())
+	if len(message.KeyID) != responseNonceSize {
+		return nil, fmt.Errorf("Invalid response key ID length: expected %v, got %v", responseNonceSize, len(message.KeyID))
+	}
+
+	encodedResponseNonce := encodeLengthPrefixedSlice(message.KeyID)
+	salt := append(c.query, encodedResponseNonce...)
+	prk := c.suite.KDF.Extract(salt, c.secret)
+	key := c.suite.KDF.Expand(prk, []byte(ODOH_LABEL_KEY), c.suite.AEAD.KeySize())
+	nonce := c.suite.KDF.Expand(prk, []byte(ODOH_LABEL_NONCE), c.suite.AEAD.NonceSize())
 
 	aead, err := c.suite.AEAD.New(key)
 	if err != nil {
 		return nil, err
 	}
 
+	aad := append([]byte{byte(ResponseType)}, encodedResponseNonce...)
 	return aead.Open(nil, nonce, message.EncryptedMessage, aad)
 }
 
 type ResponseContext struct {
-	query      []byte
-	suite      hpke.CipherSuite
-	odohSecret []byte
+	query  []byte
+	suite  hpke.CipherSuite
+	secret []byte
 }
 
-func (c ResponseContext) EncryptResponse(response *ObliviousDNSResponse) (ObliviousDNSMessage, error) {
-	aad := append([]byte{byte(ResponseType)}, []byte{0x00, 0x00}...) // 0-length encoded KeyID
-
-	odohPRK := c.suite.KDF.Extract(c.query, c.odohSecret)
-	key := c.suite.KDF.Expand(odohPRK, []byte(ODOH_LABEL_KEY), c.suite.AEAD.KeySize())
-	nonce := c.suite.KDF.Expand(odohPRK, []byte(ODOH_LABEL_NONCE), c.suite.AEAD.NonceSize())
+func (c ResponseContext) encryptResponseWithNonce(response *ObliviousDNSResponse, responseNonce []byte) (ObliviousDNSMessage, error) {
+	encodedResponseNonce := encodeLengthPrefixedSlice(responseNonce)
+	salt := append(c.query, encodedResponseNonce...)
+	prk := c.suite.KDF.Extract(salt, c.secret)
+	key := c.suite.KDF.Expand(prk, []byte(ODOH_LABEL_KEY), c.suite.AEAD.KeySize())
+	nonce := c.suite.KDF.Expand(prk, []byte(ODOH_LABEL_NONCE), c.suite.AEAD.NonceSize())
 
 	aead, err := c.suite.AEAD.New(key)
 	if err != nil {
 		return ObliviousDNSMessage{}, err
 	}
 
+	aad := append([]byte{byte(ResponseType)}, encodedResponseNonce...)
 	ciphertext := aead.Seal(nil, nonce, response.Marshal(), aad)
 
 	odohMessage := ObliviousDNSMessage{
-		KeyID:            nil,
+		KeyID:            responseNonce,
 		MessageType:      ResponseType,
 		EncryptedMessage: ciphertext,
 	}
 
 	return odohMessage, nil
+}
+
+func (c ResponseContext) EncryptResponse(response *ObliviousDNSResponse) (ObliviousDNSMessage, error) {
+	responseNonceSize := c.suite.AEAD.KeySize()
+	if responseNonceSize < c.suite.AEAD.NonceSize() {
+		responseNonceSize = c.suite.AEAD.NonceSize()
+	}
+
+	responseNonce := make([]byte, responseNonceSize)
+	read, err := rand.Read(responseNonce)
+	if err != nil {
+		return ObliviousDNSMessage{}, err
+	}
+	if read != responseNonceSize {
+		return ObliviousDNSMessage{}, fmt.Errorf("Failed to read %v bytes", responseNonceSize)
+	}
+
+	return c.encryptResponseWithNonce(response, responseNonce)
 }
 
 func (targetKey ObliviousDoHConfigContents) EncryptQuery(query *ObliviousDNSQuery) (ObliviousDNSMessage, QueryContext, error) {
@@ -455,6 +484,8 @@ func (targetKey ObliviousDoHConfigContents) EncryptQuery(query *ObliviousDNSQuer
 		return ObliviousDNSMessage{}, QueryContext{}, err
 	}
 
+	secret := ctxI.Export([]byte(ODOH_LABEL_RESPONSE), suite.AEAD.KeySize())
+
 	keyID := targetKey.KeyID()
 	keyIDLength := make([]byte, 2)
 	binary.BigEndian.PutUint16(keyIDLength, uint16(len(keyID)))
@@ -463,17 +494,16 @@ func (targetKey ObliviousDoHConfigContents) EncryptQuery(query *ObliviousDNSQuer
 
 	encodedMessage := query.Marshal()
 	ct := ctxI.Seal(aad, encodedMessage)
-	odohSecret := ctxI.Export([]byte(ODOH_LABEL_SECRET), ODOH_SECRET_LENGTH)
 
 	return ObliviousDNSMessage{
 			KeyID:            targetKey.KeyID(),
 			MessageType:      QueryType,
 			EncryptedMessage: append(enc, ct...),
 		}, QueryContext{
-			odohSecret: odohSecret,
-			suite:      suite,
-			query:      query.Marshal(),
-			publicKey:  targetKey,
+			secret:    secret,
+			suite:     suite,
+			query:     query.Marshal(),
+			publicKey: targetKey,
 		}, nil
 }
 
@@ -504,7 +534,7 @@ func (privateKey ObliviousDoHKeyPair) DecryptQuery(message ObliviousDNSMessage) 
 		return nil, ResponseContext{}, err
 	}
 
-	odohSecret := ctxR.Export([]byte(ODOH_LABEL_SECRET), ODOH_SECRET_LENGTH)
+	secret := ctxR.Export([]byte(ODOH_LABEL_RESPONSE), suite.AEAD.KeySize())
 
 	keyID := privateKey.Config.Contents.KeyID()
 	keyIDLength := make([]byte, 2)
@@ -527,9 +557,9 @@ func (privateKey ObliviousDoHKeyPair) DecryptQuery(message ObliviousDNSMessage) 
 	}
 
 	responseContext := ResponseContext{
-		odohSecret: odohSecret,
-		suite:      suite,
-		query:      query.Marshal(),
+		suite:  suite,
+		query:  query.Marshal(),
+		secret: secret,
 	}
 
 	return query, responseContext, nil
