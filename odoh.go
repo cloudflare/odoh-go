@@ -34,6 +34,7 @@ import (
 
 const (
 	ODOH_VERSION                    = uint16(0x0001)
+	ODOH_PAULY_VERSION              = uint16(0xFF06)
 	ODOH_SECRET_LENGTH              = 32
 	ODOH_PADDING_BYTE               = uint8(0)
 	ODOH_LABEL_KEY_ID               = "odoh key id"
@@ -233,7 +234,7 @@ func parseConfigHeader(buffer []byte) (uint16, uint16, error) {
 }
 
 func isSupportedConfigVersion(version uint16) bool {
-	return version == ODOH_VERSION
+	return version == ODOH_VERSION || version == ODOH_PAULY_VERSION
 }
 
 func UnmarshalObliviousDoHConfig(buffer []byte) (ObliviousDoHConfig, error) {
@@ -295,10 +296,12 @@ func UnmarshalObliviousDoHConfigs(buffer []byte) (ObliviousDoHConfigs, error) {
 	for {
 		configVersion, configLength, err := parseConfigHeader(buffer[offset:])
 		if err != nil {
+			fmt.Println("Parse Config Header: %s", err)
 			return ObliviousDoHConfigs{}, errors.New("Invalid ObliviousDoHConfigs encoding")
 		}
 
 		if uint16(len(buffer[offset:])) < configLength {
+			fmt.Println("The configs vector is encoded incorrectly, so discard the whole thing")
 			// The configs vector is encoded incorrectly, so discard the whole thing
 			return ObliviousDoHConfigs{}, errors.New(fmt.Sprintf("Invalid serialized ObliviousDoHConfig, expected %v bytes, got %v", length, len(buffer[offset:])))
 		}
@@ -310,6 +313,7 @@ func UnmarshalObliviousDoHConfigs(buffer []byte) (ObliviousDoHConfigs, error) {
 			}
 		} else {
 			// Skip over unsupported versions
+			fmt.Println("Unsupported Versions!!!")
 		}
 
 		offset += 4 + configLength
