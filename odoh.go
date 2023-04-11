@@ -135,12 +135,6 @@ func UnmarshalObliviousDoHConfigContents(buffer []byte) (ObliviousDoHConfigConte
 	case 0x0021:
 		KemID = hpke.DHKEM_X448
 		break
-	case 0xFFFE:
-		KemID = hpke.KEM_SIKE503
-		break
-	case 0xFFFF:
-		KemID = hpke.KEM_SIKE751
-		break
 	default:
 		return ObliviousDoHConfigContents{}, errors.New(fmt.Sprintf("Unsupported KEMID: %04x", kemId))
 	}
