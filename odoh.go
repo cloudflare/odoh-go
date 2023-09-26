@@ -125,56 +125,46 @@ func UnmarshalObliviousDoHConfigContents(buffer []byte) (ObliviousDoHConfigConte
 	switch kemId {
 	case 0x0010:
 		KemID = hpke.DHKEM_P256
-		break
 	case 0x0012:
 		KemID = hpke.DHKEM_P521
-		break
 	case 0x0020:
 		KemID = hpke.DHKEM_X25519
-		break
 	case 0x0021:
 		KemID = hpke.DHKEM_X448
-		break
 	default:
-		return ObliviousDoHConfigContents{}, errors.New(fmt.Sprintf("Unsupported KEMID: %04x", kemId))
+		return ObliviousDoHConfigContents{}, fmt.Errorf("Unsupported KEMID: %04x", kemId)
 	}
 
 	switch kdfId {
 	case 0x0001:
 		KdfID = hpke.KDF_HKDF_SHA256
-		break
 	case 0x0002:
 		KdfID = hpke.KDF_HKDF_SHA384
-		break
 	case 0x0003:
 		KdfID = hpke.KDF_HKDF_SHA512
-		break
 	default:
-		return ObliviousDoHConfigContents{}, errors.New(fmt.Sprintf("Unsupported KDFID: %04x", kdfId))
+		return ObliviousDoHConfigContents{}, fmt.Errorf("Unsupported KDFID: %04x", kdfId)
 	}
 
 	switch aeadId {
 	case 0x0001:
 		AeadID = hpke.AEAD_AESGCM128
-		break
 	case 0x0002:
 		AeadID = hpke.AEAD_AESGCM256
-		break
 	case 0x0003:
 		AeadID = hpke.AEAD_CHACHA20POLY1305
-		break
 	default:
-		return ObliviousDoHConfigContents{}, errors.New(fmt.Sprintf("Unsupported AEADID: %04x", aeadId))
+		return ObliviousDoHConfigContents{}, fmt.Errorf("Unsupported AEADID: %04x", aeadId)
 	}
 
 	suite, err := hpke.AssembleCipherSuite(KemID, KdfID, AeadID)
 	if err != nil {
-		return ObliviousDoHConfigContents{}, errors.New(fmt.Sprintf("Unsupported HPKE ciphersuite"))
+		return ObliviousDoHConfigContents{}, errors.New("Unsupported HPKE ciphersuite")
 	}
 
 	_, err = suite.KEM.DeserializePublicKey(publicKeyBytes)
 	if err != nil {
-		return ObliviousDoHConfigContents{}, errors.New(fmt.Sprintf("Invalid HPKE public key bytes"))
+		return ObliviousDoHConfigContents{}, errors.New("Invalid HPKE public key bytes")
 	}
 
 	return ObliviousDoHConfigContents{
@@ -237,10 +227,10 @@ func UnmarshalObliviousDoHConfig(buffer []byte) (ObliviousDoHConfig, error) {
 	}
 
 	if !isSupportedConfigVersion(version) {
-		return ObliviousDoHConfig{}, errors.New(fmt.Sprintf("Unsupported version: %04x", version))
+		return ObliviousDoHConfig{}, fmt.Errorf("Unsupported version: %04x", version)
 	}
 	if len(buffer[4:]) < int(length) {
-		return ObliviousDoHConfig{}, errors.New(fmt.Sprintf("Invalid serialized ObliviousDoHConfig, expected %v bytes, got %v", length, len(buffer[4:])))
+		return ObliviousDoHConfig{}, fmt.Errorf("Invalid serialized ObliviousDoHConfig, expected %v bytes, got %v", length, len(buffer[4:]))
 	}
 
 	configContents, err := UnmarshalObliviousDoHConfigContents(buffer[4:])
@@ -294,7 +284,7 @@ func UnmarshalObliviousDoHConfigs(buffer []byte) (ObliviousDoHConfigs, error) {
 
 		if uint16(len(buffer[offset:])) < configLength {
 			// The configs vector is encoded incorrectly, so discard the whole thing
-			return ObliviousDoHConfigs{}, errors.New(fmt.Sprintf("Invalid serialized ObliviousDoHConfig, expected %v bytes, got %v", length, len(buffer[offset:])))
+			return ObliviousDoHConfigs{}, fmt.Errorf("Invalid serialized ObliviousDoHConfig, expected %v bytes, got %v", length, len(buffer[offset:]))
 		}
 
 		if isSupportedConfigVersion(configVersion) {
@@ -302,9 +292,7 @@ func UnmarshalObliviousDoHConfigs(buffer []byte) (ObliviousDoHConfigs, error) {
 			if err == nil {
 				configs = append(configs, config)
 			}
-		} else {
-			// Skip over unsupported versions
-		}
+		} // else skip over unsupported versions
 
 		offset += 4 + configLength
 		if offset >= 2+length {
@@ -358,7 +346,10 @@ func CreateKeyPair(kemID hpke.KEMID, kdfID hpke.KDFID, aeadID hpke.AEADID) (Obli
 	}
 
 	ikm := make([]byte, suite.KEM.PrivateKeySize())
-	rand.Reader.Read(ikm)
+	_, err = rand.Reader.Read(ikm)
+	if err != nil {
+		return ObliviousDoHKeyPair{}, err
+	}
 	sk, pk, err := suite.KEM.DeriveKeyPair(ikm)
 	if err != nil {
 		return ObliviousDoHKeyPair{}, err

@@ -30,7 +30,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -358,7 +357,10 @@ func TestQueryEncryption(t *testing.T) {
 	}
 
 	ikm := make([]byte, suite.KEM.PrivateKeySize())
-	rand.Reader.Read(ikm)
+	_, err = rand.Reader.Read(ikm)
+	if err != nil {
+		t.Fatalf("Cannot read random ikm: %s", err)
+	}
 	skR, pkR, err := suite.KEM.DeriveKeyPair(ikm)
 	if err != nil {
 		t.Fatalf("[%x, %x, %x] Error generating DH key pair: %s", kemID, kdfID, aeadID, err)
@@ -412,7 +414,10 @@ func Test_Sender_ODOHQueryEncryption(t *testing.T) {
 	}
 
 	ikm := make([]byte, suite.KEM.PrivateKeySize())
-	rand.Reader.Read(ikm)
+	_, err = rand.Reader.Read(ikm)
+	if err != nil {
+		t.Fatalf("Cannot read random ikm: %s", err)
+	}
 
 	skR, pkR, err := suite.KEM.DeriveKeyPair(ikm)
 	if err != nil {
@@ -432,7 +437,10 @@ func Test_Sender_ODOHQueryEncryption(t *testing.T) {
 
 	odohKeyPair := ObliviousDoHKeyPair{targetConfig, skR, ikm}
 	symmetricKey := make([]byte, suite.AEAD.KeySize())
-	rand.Read(symmetricKey)
+	_, err = rand.Read(symmetricKey)
+	if err != nil {
+		t.Fatalf("Cannot read symmetric key: %s", err)
+	}
 
 	dnsMessage := []byte{0x01, 0x02, 0x03}
 	message := CreateObliviousDNSQuery(dnsMessage, 0)
@@ -475,7 +483,10 @@ func TestOdohPublicKeyMarshalUnmarshal(t *testing.T) {
 	}
 
 	ikm := make([]byte, suite.KEM.PrivateKeySize())
-	rand.Reader.Read(ikm)
+	_, err = rand.Reader.Read(ikm)
+	if err != nil {
+		t.Fatalf("Cannot read random ikm: %s", err)
+	}
 
 	_, pkR, err := suite.KEM.DeriveKeyPair(ikm)
 	if err != nil {
@@ -552,18 +563,36 @@ func TestSealQueryAndOpenAnswer(t *testing.T) {
 
 	dnsQueryData := make([]byte, 40)
 	_, err = rand.Read(dnsQueryData)
+	if err != nil {
+		t.Fatalf("Cannot read dns query data: %s", err)
+	}
 
 	encryptedData, queryContext, err := SealQuery(dnsQueryData, kp.Config.Contents)
+	if err != nil {
+		t.Fatalf("Cannot seal query: %s", err)
+	}
 
 	mockAnswerData := make([]byte, 100)
 	_, err = rand.Read(mockAnswerData)
+	if err != nil {
+		t.Fatalf("Cannot read mock answer: %s", err)
+	}
 
 	_, responseContext, err := kp.DecryptQuery(encryptedData)
+	if err != nil {
+		t.Fatalf("Cannot decrypt query: %s", err)
+	}
 
 	mockResponse := CreateObliviousDNSResponse(mockAnswerData, 0)
 	encryptedAnswer, err := responseContext.EncryptResponse(mockResponse)
+	if err != nil {
+		t.Fatalf("Cannot encrypt response: %s", err)
+	}
 
 	response, err := queryContext.OpenAnswer(encryptedAnswer)
+	if err != nil {
+		t.Fatalf("Cannot open answer: %s", err)
+	}
 
 	if !bytes.Equal(response, mockAnswerData) {
 		t.Fatalf("Decryption of the result does not match encrypted value")
@@ -593,9 +622,8 @@ func fatalOnError(t *testing.T, err error, msg string) {
 	if err != nil {
 		if t != nil {
 			t.Fatalf(realMsg)
-		} else {
-			panic(realMsg)
 		}
+		panic(realMsg)
 	}
 }
 
@@ -609,6 +637,7 @@ func mustHex(d []byte) string {
 	return hex.EncodeToString(d)
 }
 
+/* Unused ...
 func mustDeserializePub(t *testing.T, suite hpke.CipherSuite, h string, required bool) hpke.KEMPublicKey {
 	pkm := mustUnhex(t, h)
 	pk, err := suite.KEM.DeserializePublicKey(pkm)
@@ -621,6 +650,7 @@ func mustDeserializePub(t *testing.T, suite hpke.CipherSuite, h string, required
 func mustSerializePub(suite hpke.CipherSuite, pub hpke.KEMPublicKey) string {
 	return mustHex(suite.KEM.SerializePublicKey(pub))
 }
+... Unused */
 
 // /////
 // Query/Response transaction test vector structure
@@ -928,7 +958,7 @@ func TestVectorGenerate(t *testing.T) {
 	// Write them to a file if requested
 	var outputFile string
 	if outputFile = os.Getenv(outputTestVectorEnvironmentKey); len(outputFile) > 0 {
-		err = ioutil.WriteFile(outputFile, encoded, 0644)
+		err = os.WriteFile(outputFile, encoded, 0644)
 		if err != nil {
 			t.Fatalf("Error writing test vectors: %v", err)
 		}
@@ -941,7 +971,7 @@ func TestVectorVerify(t *testing.T) {
 		t.Skip("Test vectors were not provided")
 	}
 
-	encoded, err := ioutil.ReadFile(inputFile)
+	encoded, err := os.ReadFile(inputFile)
 	if err != nil {
 		t.Fatalf("Failed reading test vectors: %v", err)
 	}
