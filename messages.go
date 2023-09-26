@@ -34,12 +34,10 @@ const (
 	ResponseType ObliviousMessageType = 0x02
 )
 
-//
-// struct {
-//    opaque dns_message<1..2^16-1>;
-//    opaque padding<0..2^16-1>;
-// } ObliviousDoHQueryBody;
-//
+//	struct {
+//	   opaque dns_message<1..2^16-1>;
+//	   opaque padding<0..2^16-1>;
+//	} ObliviousDoHQueryBody;
 type ObliviousDNSMessageBody struct {
 	DnsMessage []byte
 	Padding    []byte
@@ -118,13 +116,11 @@ func UnmarshalResponseBody(data []byte) (*ObliviousDNSResponse, error) {
 	return &ObliviousDNSResponse{msg}, nil
 }
 
-//
-// struct {
-//    uint8  message_type;
-//    opaque key_id<0..2^16-1>;
-//    opaque encrypted_message<1..2^16-1>;
-// } ObliviousDoHMessage;
-//
+//	struct {
+//	   uint8  message_type;
+//	   opaque key_id<0..2^16-1>;
+//	   opaque encrypted_message<1..2^16-1>;
+//	} ObliviousDoHMessage;
 type ObliviousDNSMessage struct {
 	MessageType      ObliviousMessageType
 	KeyID            []byte

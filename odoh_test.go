@@ -570,7 +570,7 @@ func TestSealQueryAndOpenAnswer(t *testing.T) {
 	}
 }
 
-///////
+// /////
 // Assertions
 func assert(t *testing.T, msg string, test bool) {
 	if !test {
@@ -622,7 +622,7 @@ func mustSerializePub(suite hpke.CipherSuite, pub hpke.KEMPublicKey) string {
 	return mustHex(suite.KEM.SerializePublicKey(pub))
 }
 
-///////
+// /////
 // Query/Response transaction test vector structure
 type rawTransactionTestVector struct {
 	Query                 string `json:"query"`
